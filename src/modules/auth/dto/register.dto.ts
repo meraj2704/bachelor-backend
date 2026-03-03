@@ -1,40 +1,69 @@
-import { IsEmail, IsString, IsNotEmpty, MinLength, IsOptional, ValidateIf } from 'class-validator';
+import { IsEmail, IsString, IsNotEmpty, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
-// Common fields
 class RegisterBaseDto {
-    @ApiProperty()
+    @ApiProperty({
+        example: 'john.doe@example.com',
+        description: 'Unique email address of the user',
+        format: 'email'
+    })
     @IsEmail()
+    @Transform(({ value }) => value?.toLowerCase().trim())
     email: string;
 
-    @ApiProperty()
+    @ApiProperty({
+        example: 'Password123',
+        description: 'Password must be at least 6 characters long',
+        minLength: 6
+    })
     @IsString()
     @MinLength(6)
     password: string;
 
-    @ApiProperty()
+    @ApiProperty({ example: 'John', description: 'User first name' })
     @IsString()
     @IsNotEmpty()
+    @Transform(({ value }) => value?.trim())
     firstName: string;
 
-    @ApiProperty()
+    @ApiProperty({ example: 'Doe', description: 'User last name' })
     @IsString()
     @IsNotEmpty()
+    @Transform(({ value }) => value?.trim())
     lastName: string;
 }
 
-// Manager Specific DTO
 export class RegisterManagerDto extends RegisterBaseDto {
-    @ApiProperty({ description: 'Name of the house to be created' })
+    @ApiProperty({
+        example: 'Bachelor Paradise',
+        description: 'The name of the house/mess being managed'
+    })
     @IsString()
     @IsNotEmpty()
+    @Transform(({ value }) => value?.trim())
     houseName: string;
 }
 
-// Member Specific DTO
 export class RegisterMemberDto extends RegisterBaseDto {
-    @ApiProperty({ description: 'Invite code to join a house' })
+    @ApiProperty({
+        example: 'HOUSE_123_ABC',
+        description: 'The unique invite code to join a specific house'
+    })
     @IsString()
     @IsNotEmpty()
-    inviteCode: string; // এখানে Invite Code দিয়ে HouseId বের করতে হবে
+    @Transform(({ value }) => value?.trim())
+    inviteCode: string;
+}
+
+export class LoginDto {
+    @ApiProperty({ example: 'john.doe@example.com' })
+    @IsEmail()
+    @Transform(({ value }) => value?.toLowerCase().trim())
+    email: string;
+
+    @ApiProperty({ example: 'Password123' })
+    @IsString()
+    @IsNotEmpty()
+    password: string;
 }

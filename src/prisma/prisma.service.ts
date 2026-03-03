@@ -14,6 +14,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       max: 20, // প্রয়োজন অনুযায়ী Pool size সেট করুন
     });
 
+    console.log(process.env.DATABASE_URL);
     const adapter = new PrismaPg(pool);
 
     super({
