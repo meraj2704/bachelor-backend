@@ -14,6 +14,12 @@ async function bootstrap() {
     logger: WinstonModule.createLogger(loggerConfig)
   });
 
+  app.enableCors({
+    origin: ['http://localhost:3000', 'http://localhost:3001'], // Add your frontend URLs here
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true, // Allow cookies/headers
+  });
+
   app.use(helmet())
   app.use(compression());
   app.useGlobalPipes(new ValidationPipe(
@@ -31,6 +37,17 @@ async function bootstrap() {
     .setTitle('API Documentation')
     .setDescription('The API description')
     .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter JWT token',
+        in: 'header',
+      },
+      'JWT-auth',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

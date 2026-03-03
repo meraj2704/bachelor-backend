@@ -1,56 +1,77 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, User } from "../../generated/prisma/client.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 
-
-
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
-  async user(userWhereUniqueInput: Prisma.UserWhereUniqueInput): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: userWhereUniqueInput,
-    });
+  /**
+   * Utility to remove sensitive fields from the user object
+   */
+  private sanitizeUser(user: any) {
+    if (!user) return null;
+    const { passwordHash, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
+  /**
+   * Fetches the profile of the currently authenticated user
+   * Includes house membership details
+   */
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        managedHouses: true,
+        memberships: true
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.sanitizeUser(user);
+  }
+
+  /**
+   * Fetches a list of users with pagination and filtering
+   */
   async users(params: {
     skip?: number;
     take?: number;
-    cursor?: Prisma.UserWhereUniqueInput;
     where?: Prisma.UserWhereInput;
     orderBy?: Prisma.UserOrderByWithRelationInput;
-  }): Promise<User[]> {
-    const { skip, take, cursor, where, orderBy } = params;
-    return this.prisma.user.findMany({
+  }) {
+    const { skip, take, where, orderBy } = params;
+    const users = await this.prisma.user.findMany({
       skip,
       take,
-      cursor,
       where,
       orderBy,
     });
+
+    return users.map((user) => this.sanitizeUser(user));
   }
 
-  async createUser(data: Prisma.UserCreateInput): Promise<User> {
-    return this.prisma.user.create({
+  /**
+   * Updates specific user fields safely
+   */
+  async updateUser(userId: string, data: Prisma.UserUpdateInput) {
+    const user = await this.prisma.user.update({
       data,
+      where: { id: userId },
     });
+    return this.sanitizeUser(user);
   }
 
-  async updateUser(params: {
-    where: Prisma.UserWhereUniqueInput;
-    data: Prisma.UserUpdateInput;
-  }): Promise<User> {
-    const { where, data } = params;
-    return this.prisma.user.update({
-      data,
-      where,
-    });
-  }
-
-  async deleteUser(where: Prisma.UserWhereUniqueInput): Promise<User> {
+  /**
+   * Permanently deletes a user from the database
+   */
+  async deleteUser(userId: string) {
     return this.prisma.user.delete({
-      where,
+      where: { id: userId },
     });
   }
 }
