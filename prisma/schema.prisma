@@ -1,12 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
@@ -15,19 +11,24 @@ datasource db {
 }
 
 enum RoleType {
-  ADMIN
+  SUPER_ADMIN
   MANAGER
   MEMBER
 }
 
 enum ExpenseCategory {
-  MEAL
-  BAZAR
-  RENT
+  MEAL_BAZAR
+  HOUSE_RENT
   UTILITIES
-  EXTRA
-  TRANSPORT
+  INTERNET
+  MAID_BILL
   OTHER
+}
+
+enum TransactionType {
+  DEPOSIT
+  DEDUCTION
+  ADJUSTMENT
 }
 
 // --- MODELS ---
@@ -40,60 +41,59 @@ model User {
   firstName      String
   lastName       String
   profilePicture String?
-
-  // Wallet for Bachelor balance tracking
   currentBalance Decimal @default(0) @db.Decimal(12, 2)
   isActive       Boolean @default(true)
+  managedHouse House? @relation("HouseManager")
+  membership HouseMember?
 
-  // Relations
-  managedHouses House[]        @relation("HouseManager")
-  memberships   HouseMember[]
-  paidExpenses  Expense[]      @relation("PayerExpenses")
-  mealLogs      MealLog[]
-  deposits      Deposit[]
-  refreshTokens RefreshToken[]
+  paidExpenses    Expense[]      @relation("Payer")
+  createdExpenses Expense[]      @relation("ExpenseCreator")
+  mealLogs        MealLog[]      @relation("MealUser")
+  deposits        Deposit[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  transactions    Transaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("user")
+  @@map("users")
 }
 
 model House {
   id      String  @id @default(cuid())
   name    String
   address String?
-
-  // Bachelor Configuration
   isMealSystemActive Boolean @default(true)
-  currentMealRate    Decimal @default(0) @db.Decimal(10, 4) // Higher precision for rates
-
-  // Manager Relation
-  managerId String
+  currentMealRate    Decimal @default(0) @db.Decimal(10, 4)
+  managerId String @unique
   manager   User   @relation("HouseManager", fields: [managerId], references: [id])
 
-  // House Relations
-  members  HouseMember[]
-  expenses Expense[]
-  mealLogs MealLog[]
-  deposits Deposit[]
+  members      HouseMember[]
+  expenses     Expense[]
+  mealLogs     MealLog[]
+  deposits     Deposit[]
+  auditLogs    AuditLog[]
+  transactions Transaction[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  createdById    String?
+  updatedById    String?
+  userFixedCosts UserFixedCost[]
 
   @@map("houses")
 }
 
 model HouseMember {
-  id        String    @id @default(cuid())
-  houseId   String
-  userId    String
-  role      RoleType  @default(MEMBER)
-  isActive  Boolean   @default(true)
-  joinDate  DateTime  @default(now())
-  leaveDate DateTime?
+  id      String @id @default(cuid())
+  houseId String
+  userId  String @unique 
 
-  // Real-time calculated stats for the dashboard
+  role     RoleType @default(MEMBER)
+  isActive Boolean  @default(true)
+  joinDate DateTime @default(now())
+
   totalMeals   Decimal @default(0) @db.Decimal(10, 1)
   totalDeposit Decimal @default(0) @db.Decimal(10, 2)
   totalCost    Decimal @default(0) @db.Decimal(10, 2)
@@ -101,50 +101,84 @@ model HouseMember {
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([houseId, userId])
-  @@index([userId])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdById   String?
+  updatedById   String?
+  userFixedCost UserFixedCost?
+
   @@map("house_members")
+}
+
+model UserFixedCost {
+  id       String @id @default(cuid())
+  memberId String @unique
+  houseId  String
+
+  roomRent    Decimal @default(0) @db.Decimal(12, 2)
+  khalaBill   Decimal @default(0) @db.Decimal(12, 2)
+  wifiBill    Decimal @default(0) @db.Decimal(12, 2)
+  electricity Decimal @default(0) @db.Decimal(12, 2)
+  gasBill     Decimal @default(0) @db.Decimal(12, 2)
+  waterBill   Decimal @default(0) @db.Decimal(12, 2)
+  otherBill   Decimal @default(0) @db.Decimal(12, 2)
+  totalFixedCost Decimal @default(0) @db.Decimal(12, 2)
+
+  lastUpdated DateTime @updatedAt
+  updatedById String?
+
+  member HouseMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  house  House       @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@map("user_fixed_costs")
 }
 
 model Expense {
   id          String          @id @default(cuid())
   title       String
   amount      Decimal         @db.Decimal(12, 2)
-  category    ExpenseCategory @default(BAZAR)
+  category    ExpenseCategory @default(MEAL_BAZAR)
   expenseDate DateTime        @default(now())
 
-  // Business Logic Flags
-  isBazar     Boolean @default(true) // If true, used to calculate Meal Rate
-  isFixedCost Boolean @default(false) // If true, split equally among members (e.g., Wifi)
-
-  payerId String
+  isBazar     Boolean @default(true) 
+  isFixedCost Boolean @default(false) 
   houseId String
+  payerId String // Who paid the money
+  house   House  @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  payer   User   @relation("Payer", fields: [payerId], references: [id])
 
-  payer User  @relation("PayerExpenses", fields: [payerId], references: [id])
-  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // Audit Fields
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String // Who entered the record
+  creator     User     @relation("ExpenseCreator", fields: [createdById], references: [id])
+  updatedById String?
 
   @@index([houseId, expenseDate])
   @@map("expenses")
 }
 
 model MealLog {
-  id        String   @id @default(cuid())
-  houseId   String
-  userId    String
-  date      DateTime @db.Date // Strictly stores YYYY-MM-DD
-  breakfast Decimal  @default(0) @db.Decimal(3, 1)
-  lunch     Decimal  @default(0) @db.Decimal(3, 1)
-  dinner    Decimal  @default(0) @db.Decimal(3, 1)
-  totalDay  Decimal  @default(0) @db.Decimal(3, 1)
+  id      String   @id @default(cuid())
+  houseId String
+  userId  String
+  date    DateTime @db.Date
+
+  breakfast Decimal @default(0) @db.Decimal(3, 1)
+  lunch     Decimal @default(0) @db.Decimal(3, 1)
+  dinner    Decimal @default(0) @db.Decimal(3, 1)
+  totalDay  Decimal @default(0) @db.Decimal(3, 1)
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User  @relation("MealUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Audit Fields
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  updatedById String?
 
   @@unique([houseId, userId, date])
-  @@index([date])
   @@map("meal_logs")
 }
 
@@ -154,14 +188,49 @@ model Deposit {
   userId  String
   amount  Decimal  @db.Decimal(12, 2)
   date    DateTime @default(now())
-  month   Int // 1 to 12
-  year    Int // e.g., 2024
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([houseId, month, year])
+  // Audit Fields
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  updatedById String?
+
   @@map("deposits")
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  houseId     String
+  userId      String
+  amount      Decimal         @db.Decimal(12, 2)
+  type        TransactionType
+  description String?
+
+  house House @relation(fields: [houseId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("transactions")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  houseId   String
+  userId    String? // Action Performer
+  action    String // e.g., CREATE, UPDATE, DELETE
+  entity    String // e.g., Expense, MealLog
+  entityId  String
+  payload   Json? // Stores the data involved
+  createdAt DateTime @default(now())
+
+  house House @relation(fields: [houseId], references: [id])
+  user  User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
 }
 
 model RefreshToken {
@@ -172,6 +241,5 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  @@index([userId])
   @@map("refresh_tokens")
 }

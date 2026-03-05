@@ -14,13 +14,23 @@ async function bootstrap() {
     logger: WinstonModule.createLogger(loggerConfig)
   });
 
+  // app.enableCors({
+  //   origin: ['http://localhost:3000', 'http://localhost:3001'], // Add your frontend URLs here
+  //   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  //   credentials: true, // Allow cookies/headers
+  // });
+
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'], // Add your frontend URLs here
+    origin: true, // Dynamically allow the requesting origin
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, // Allow cookies/headers
+    credentials: true,
+    allowedHeaders: 'Content-Type, Accept, Authorization', // Explicitly allow these
   });
 
-  app.use(helmet())
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false, // Disable CSP if it interferes with Swagger/Frontend in Dev
+  }));
   app.use(compression());
   app.useGlobalPipes(new ValidationPipe(
     {

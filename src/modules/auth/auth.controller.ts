@@ -49,12 +49,10 @@ export class AuthController {
     if (userExistWithEmail) {
       throw new ConflictException('User with this email already exists');
     }
-
     const house = await this.authService.findHouseWithId(dto.inviteCode);
     if (!house) {
       throw new BadRequestException('Invalid invitation code!');
     }
-
     return this.authService.registerMember(dto);
   }
 
