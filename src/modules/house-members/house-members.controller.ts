@@ -1,6 +1,6 @@
 
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, UseGuards, Request, Patch, Param } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { HouseMembersService } from './house-members.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js'; // Adjust path
 
@@ -22,5 +22,25 @@ export class HouseMembersController {
   async getHouseMembers(@Request() req) {
     const houseId = req.user.managedHouse.id;
     return this.houseMembersService.findAll(houseId);
+  }
+
+  @Patch(':memberId/status')
+  @ApiOperation({
+    summary: 'Toggle member activation status',
+    description: 'Flips the isActive status. If deactivating, records leftDate; if activating, clears leftDate.'
+  })
+  @ApiParam({ name: 'memberId', description: 'The unique ID of the house member' })
+  @ApiResponse({ status: 200, description: 'Member status toggled successfully.' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Cannot toggle a Manager\'s status.' })
+  @ApiResponse({ status: 404, description: 'Member not found in this house.' })
+  async toggleStatus(
+    @Param('memberId') memberId: string,
+    @Request() req
+  ) {
+    // 1. Get house context from the Manager's JWT
+    const houseId = req.user?.managedHouse?.id || req.user?.houseId;
+
+    // 2. Execute the toggle logic in the service
+    return this.houseMembersService.toggleMemberStatus(memberId, houseId);
   }
 }

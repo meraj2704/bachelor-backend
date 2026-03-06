@@ -1,5 +1,3 @@
-
-
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -34,17 +32,17 @@ enum TransactionType {
 // --- MODELS ---
 
 model User {
-  id             String  @id @default(cuid())
-  email          String  @unique
-  phone          String? @unique
+  id             String       @id @default(cuid())
+  email          String       @unique
+  phone          String?      @unique
   passwordHash   String
   firstName      String
   lastName       String
   profilePicture String?
-  currentBalance Decimal @default(0) @db.Decimal(12, 2)
-  isActive       Boolean @default(true)
-  managedHouse House? @relation("HouseManager")
-  membership HouseMember?
+  currentBalance Decimal      @default(0) @db.Decimal(12, 2)
+  isActive       Boolean      @default(true)
+  managedHouse   House?       @relation("HouseManager")
+  membership     HouseMember?
 
   paidExpenses    Expense[]      @relation("Payer")
   createdExpenses Expense[]      @relation("ExpenseCreator")
@@ -61,13 +59,13 @@ model User {
 }
 
 model House {
-  id      String  @id @default(cuid())
-  name    String
-  address String?
+  id                 String  @id @default(cuid())
+  name               String
+  address            String?
   isMealSystemActive Boolean @default(true)
   currentMealRate    Decimal @default(0) @db.Decimal(10, 4)
-  managerId String @unique
-  manager   User   @relation("HouseManager", fields: [managerId], references: [id])
+  managerId          String  @unique
+  manager            User    @relation("HouseManager", fields: [managerId], references: [id])
 
   members      HouseMember[]
   expenses     Expense[]
@@ -88,11 +86,12 @@ model House {
 model HouseMember {
   id      String @id @default(cuid())
   houseId String
-  userId  String @unique 
+  userId  String @unique
 
-  role     RoleType @default(MEMBER)
-  isActive Boolean  @default(true)
-  joinDate DateTime @default(now())
+  role     RoleType  @default(MEMBER)
+  isActive Boolean   @default(true)
+  joinDate DateTime  @default(now())
+  leftDate DateTime?
 
   totalMeals   Decimal @default(0) @db.Decimal(10, 1)
   totalDeposit Decimal @default(0) @db.Decimal(10, 2)
@@ -115,13 +114,13 @@ model UserFixedCost {
   memberId String @unique
   houseId  String
 
-  roomRent    Decimal @default(0) @db.Decimal(12, 2)
-  khalaBill   Decimal @default(0) @db.Decimal(12, 2)
-  wifiBill    Decimal @default(0) @db.Decimal(12, 2)
-  electricity Decimal @default(0) @db.Decimal(12, 2)
-  gasBill     Decimal @default(0) @db.Decimal(12, 2)
-  waterBill   Decimal @default(0) @db.Decimal(12, 2)
-  otherBill   Decimal @default(0) @db.Decimal(12, 2)
+  roomRent       Decimal @default(0) @db.Decimal(12, 2)
+  khalaBill      Decimal @default(0) @db.Decimal(12, 2)
+  wifiBill       Decimal @default(0) @db.Decimal(12, 2)
+  electricity    Decimal @default(0) @db.Decimal(12, 2)
+  gasBill        Decimal @default(0) @db.Decimal(12, 2)
+  waterBill      Decimal @default(0) @db.Decimal(12, 2)
+  otherBill      Decimal @default(0) @db.Decimal(12, 2)
   totalFixedCost Decimal @default(0) @db.Decimal(12, 2)
 
   lastUpdated DateTime @updatedAt
@@ -140,12 +139,12 @@ model Expense {
   category    ExpenseCategory @default(MEAL_BAZAR)
   expenseDate DateTime        @default(now())
 
-  isBazar     Boolean @default(true) 
-  isFixedCost Boolean @default(false) 
-  houseId String
-  payerId String // Who paid the money
-  house   House  @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  payer   User   @relation("Payer", fields: [payerId], references: [id])
+  isBazar     Boolean @default(true)
+  isFixedCost Boolean @default(false)
+  houseId     String
+  payerId     String // Who paid the money
+  house       House   @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  payer       User    @relation("Payer", fields: [payerId], references: [id])
 
   // Audit Fields
   createdAt   DateTime @default(now())

@@ -7,6 +7,7 @@ import { AppService } from './app.service.js';
 import { UserService } from './modules/users/users.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { HouseMembersModule } from './modules/house-members/house-members.module.js';
+import { FixedCostsModule } from './modules/fixed-costs/fixed-costs.module.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { HouseMembersModule } from './modules/house-members/house-members.module
     UsersModule,
     AuthModule,
     HouseMembersModule,
+    FixedCostsModule,
   ],
   controllers: [AppController],
   providers: [AppService, UserService, PrismaService],
