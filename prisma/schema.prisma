@@ -29,6 +29,15 @@ enum TransactionType {
   ADJUSTMENT
 }
 
+enum ExpenseUnit {
+  KG
+  LITRE
+  PIECE
+  PACKET
+  GRAM
+  DOZEN
+}
+
 // --- MODELS ---
 
 model User {
@@ -138,6 +147,8 @@ model Expense {
   amount      Decimal         @db.Decimal(12, 2)
   category    ExpenseCategory @default(MEAL_BAZAR)
   expenseDate DateTime        @default(now())
+  quantity    Decimal?        @db.Decimal(10, 2)
+  unit        ExpenseUnit?    @default(KG)
 
   isBazar     Boolean @default(true)
   isFixedCost Boolean @default(false)
@@ -163,10 +174,13 @@ model MealLog {
   userId  String
   date    DateTime @db.Date
 
-  breakfast Decimal @default(0) @db.Decimal(3, 1)
-  lunch     Decimal @default(0) @db.Decimal(3, 1)
-  dinner    Decimal @default(0) @db.Decimal(3, 1)
-  totalDay  Decimal @default(0) @db.Decimal(3, 1)
+  lunch  Decimal @default(1.0) @db.Decimal(2, 1)
+  dinner Decimal @default(1.0) @db.Decimal(2, 1)
+
+  guestLunch  Int @default(0)
+  guestDinner Int @default(0)
+
+  totalDay Decimal @default(2.0) @db.Decimal(4, 1)
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
   user  User  @relation("MealUser", fields: [userId], references: [id], onDelete: Cascade)
