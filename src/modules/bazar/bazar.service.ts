@@ -1,171 +1,313 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateBazarDto } from './dto/create-bazar.dto.js';
-import { QueryBazarDto } from './dto/query-bazar.dto.js';
+import {
+  QueryBazarDto,
+  BazarSortBy,
+  BazarSortOrder,
+  MonthlySummaryQueryDto,
+} from './dto/query-bazar.dto.js';
 import { UpdateBazarDto } from './dto/update-bazar.dto.js';
+import { BazarCategory } from './bazar.enums.js';
+
+type BazarEntry = {
+  id: string;
+  houseId: string;
+  title: string;
+  amount: any;
+  quantity: any;
+  unit: any;
+  category: BazarCategory | null;
+  expenseDate: Date;
+  payerId: string;
+  payer: { id: string; firstName: string; lastName: string } | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class BazarService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(createBazarDto: CreateBazarDto, houseId: string, creatorId: string) {
-    const { amount, expenseDate, ...rest } = createBazarDto;
+  // ---------- helpers ----------
 
-    return await this.prisma.expense.create({
+  private toBazarEntry(e: any): BazarEntry {
+    return {
+      id: e.id,
+      houseId: e.houseId,
+      title: e.title,
+      amount: e.amount,
+      quantity: e.quantity ?? null,
+      unit: e.unit ?? null,
+      category: (e.bazarCategory ?? null) as BazarCategory | null,
+      expenseDate: e.expenseDate,
+      payerId: e.payerId,
+      payer: e.payer
+        ? { id: e.payer.id, firstName: e.payer.firstName, lastName: e.payer.lastName }
+        : null,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+    };
+  }
+
+  private getMonthDateRange(month: string) {
+    const [year, mon] = month.split('-').map(Number);
+    const startDate = new Date(Date.UTC(year, mon - 1, 1));
+    const endDate = new Date(Date.UTC(year, mon, 1));
+    return { gte: startDate, lt: endDate };
+  }
+
+  private async getEntryForAuth(id: string) {
+    const expense = await this.prisma.expense.findUnique({
+      where: { id },
+      include: { house: { select: { managerId: true } } },
+    });
+    if (!expense || !expense.isBazar) {
+      throw new NotFoundException('Bazar entry not found');
+    }
+    return expense;
+  }
+
+  private assertCanMutate(expense: any, userId: string, userHouseId: string) {
+    if (expense.houseId !== userHouseId) {
+      throw new NotFoundException('Bazar entry not found');
+    }
+    const isPayer = expense.payerId === userId;
+    const isManager = expense.house?.managerId === userId;
+    if (!isPayer && !isManager) {
+      throw new ForbiddenException(
+        'Only the payer or the house manager can modify this entry',
+      );
+    }
+  }
+
+  private buildListWhere(
+    base: Record<string, any>,
+    query: QueryBazarDto,
+  ): Record<string, any> {
+    const { month, search, category, payerId } = query;
+    return {
+      ...base,
+      isBazar: true,
+      expenseDate: this.getMonthDateRange(month),
+      ...(search && {
+        title: { contains: search, mode: 'insensitive' as const },
+      }),
+      ...(category && { bazarCategory: category }),
+      ...(payerId && { payerId }),
+    };
+  }
+
+  private buildOrderBy(query: QueryBazarDto) {
+    const sortBy = query.sortBy ?? BazarSortBy.EXPENSE_DATE;
+    const order = query.order ?? BazarSortOrder.DESC;
+    return { [sortBy]: order };
+  }
+
+  // ---------- create ----------
+
+  async create(dto: CreateBazarDto, houseId: string, creatorId: string) {
+    if (dto.quantity !== undefined && !dto.unit) {
+      throw new BadRequestException('unit is required when quantity is provided');
+    }
+
+    const payerId = creatorId;
+
+    const created = await this.prisma.expense.create({
       data: {
-        ...rest,
-        amount: amount.toString(), // Ensuring it matches Prisma String/Decimal type
-        expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
-        houseId: houseId,
-        payerId: creatorId,
+        title: dto.title,
+        amount: dto.amount.toString(),
+        expenseDate: new Date(dto.expenseDate),
+        quantity: dto.quantity !== undefined ? dto.quantity.toString() : null,
+        unit: dto.unit ?? null,
+        bazarCategory: dto.category,
+        houseId,
+        payerId,
         createdById: creatorId,
         isBazar: true,
         isFixedCost: false,
         category: 'MEAL_BAZAR',
-      },
+      } as any,
       include: {
-        payer: { select: { firstName: true, lastName: true } }
-      }
+        payer: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
+
+    return this.toBazarEntry(created);
   }
 
+  // ---------- list ----------
+
   async findAll(houseId: string, query: QueryBazarDto) {
-    const { month, search, page = 1, limit = 10 } = query;
+    return this.listEntries({ houseId }, query);
+  }
+
+  async findAllForMe(userId: string, houseId: string, query: QueryBazarDto) {
+    return this.listEntries({ houseId, payerId: userId }, query);
+  }
+
+  private async listEntries(base: Record<string, any>, query: QueryBazarDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
+    const where = this.buildListWhere(base, query);
 
-    const where = {
-      houseId,
-      isBazar: true,
-      ...this.getMonthDateRange(month),
-      ...(search && {
-        OR: [
-          {
-
-            title: { contains: search, mode: 'insensitive' as const },
-          }, {
-            payer: {
-              OR: [{
-                firstName: {
-                  contains: search, mode: 'insensitive' as const
-                }
-              }, {
-                lastName: {
-                  contains: search, mode: 'insensitive' as const
-                }
-              }]
-            }
-          }
-        ]
-      }),
-    };
-
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.expense.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { expenseDate: 'desc' },
+        orderBy: this.buildOrderBy(query),
         include: {
-          payer: { select: { firstName: true, lastName: true } },
-          creator: { select: { firstName: true, lastName: true } },
+          payer: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
       this.prisma.expense.count({ where }),
     ]);
 
     return {
-      data,
+      data: rows.map((r) => this.toBazarEntry(r)),
       meta: {
         total,
         page,
         limit,
-        lastPage: Math.ceil(total / limit),
+        lastPage: Math.max(1, Math.ceil(total / limit)),
       },
     };
   }
 
-  async findAllForMe(userId: string, query: QueryBazarDto) {
-    const { month, search, page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
+  // ---------- monthly summary ----------
 
-    const where = {
-      payerId: userId,
+  async monthlySummary(
+    houseId: string,
+    userId: string,
+    query: MonthlySummaryQueryDto,
+  ) {
+    const where: Record<string, any> = {
+      houseId,
       isBazar: true,
-      ...this.getMonthDateRange(month),
-      ...(search && {
-        OR: [
-          {
-
-            title: { contains: search, mode: 'insensitive' as const },
-          }, {
-            payer: {
-              OR: [{
-                firstName: {
-                  contains: search, mode: 'insensitive' as const
-                }
-              }, {
-                lastName: {
-                  contains: search, mode: 'insensitive' as const
-                }
-              }]
-            }
-          }
-        ]
-      }),
+      expenseDate: this.getMonthDateRange(query.month),
     };
+    if (query.scope === 'me') where.payerId = userId;
 
-    const [data, total] = await Promise.all([
-      this.prisma.expense.findMany({
+    const [agg, grouped] = await Promise.all([
+      this.prisma.expense.aggregate({
         where,
-        skip,
-        take: limit,
-        orderBy: { expenseDate: 'desc' },
-        include: {
-          payer: { select: { firstName: true, lastName: true } },
-          creator: { select: { firstName: true, lastName: true } },
-        },
+        _sum: { amount: true },
+        _count: { _all: true },
       }),
-      this.prisma.expense.count({ where }),
+      this.prisma.expense.groupBy({
+        by: ['bazarCategory' as any],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      } as any) as Promise<any[]>,
     ]);
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
-    };
+    const total = Number(agg._sum.amount ?? 0);
+    const count = agg._count._all;
+    const average = count > 0 ? Math.round(total / count) : 0;
+
+    const byCategory = (grouped as any[])
+      .filter((g) => g.bazarCategory !== null)
+      .map((g) => ({
+        category: g.bazarCategory as BazarCategory,
+        total: Number(g._sum?.amount ?? 0),
+        count: g._count?._all ?? 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const topCategory = byCategory.length > 0 ? byCategory[0].category : null;
+
+    return { total, count, average, topCategory, byCategory };
   }
 
-  async update(id: string, updateBazarDto: UpdateBazarDto, userId: string) {
-    const expense = await this.prisma.expense.findUnique({ where: { id } });
+  // ---------- update ----------
 
-    if (!expense) throw new NotFoundException('Bazar entry not found');
+  async update(
+    id: string,
+    dto: UpdateBazarDto,
+    userId: string,
+    userHouseId: string,
+  ) {
+    const existing = await this.getEntryForAuth(id);
+    this.assertCanMutate(existing, userId, userHouseId);
 
-    return await this.prisma.expense.update({
+    const data: Record<string, any> = { updatedById: userId };
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.amount !== undefined) data.amount = dto.amount.toString();
+    if (dto.quantity !== undefined)
+      data.quantity = dto.quantity === null ? null : dto.quantity.toString();
+    if (dto.unit !== undefined) data.unit = dto.unit;
+    if (dto.category !== undefined) data.bazarCategory = dto.category;
+    if (dto.expenseDate !== undefined)
+      data.expenseDate = new Date(dto.expenseDate);
+
+    const updated = await this.prisma.expense.update({
       where: { id },
-      data: {
-        ...updateBazarDto,
-        updatedById: userId,
+      data,
+      include: {
+        payer: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    return this.toBazarEntry(updated);
   }
 
-  async remove(id: string) {
-    const expense = await this.prisma.expense.findUnique({ where: { id } });
-    if (!expense) throw new NotFoundException('Bazar entry not found');
+  // ---------- remove ----------
 
-    return await this.prisma.expense.delete({ where: { id } });
+  async remove(id: string, userId: string, userHouseId: string) {
+    const existing = await this.getEntryForAuth(id);
+    this.assertCanMutate(existing, userId, userHouseId);
+    await this.prisma.expense.delete({ where: { id } });
+    return { success: true, id };
   }
 
-  private getMonthDateRange(month?: string) {
-    if (!month) return {};
-    const [year, mon] = month.split('-').map(Number);
-    const startDate = new Date(Date.UTC(year, mon - 1, 1));
-    const endDate = new Date(Date.UTC(year, mon, 1));
+  // ---------- CSV export ----------
 
-    return {
-      expenseDate: {
-        gte: startDate,
-        lt: endDate,
+  async exportCsv(
+    houseId: string,
+    userId: string,
+    query: QueryBazarDto & { scope?: 'house' | 'me' },
+  ) {
+    const base: Record<string, any> =
+      query.scope === 'me' ? { houseId, payerId: userId } : { houseId };
+    const where = this.buildListWhere(base, query);
+
+    const rows = await this.prisma.expense.findMany({
+      where,
+      orderBy: this.buildOrderBy(query),
+      include: {
+        payer: { select: { firstName: true, lastName: true } },
       },
+    });
+
+    const header = 'id,date,title,quantity,unit,category,amount,payerName';
+    const escape = (v: any) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
+
+    const lines = rows.map((r: any) =>
+      [
+        r.id,
+        r.expenseDate.toISOString().split('T')[0],
+        r.title,
+        r.quantity ?? '',
+        r.unit ?? '',
+        r.bazarCategory ?? '',
+        r.amount,
+        r.payer ? `${r.payer.firstName} ${r.payer.lastName}` : '',
+      ]
+        .map(escape)
+        .join(','),
+    );
+
+    return [header, ...lines].join('\n');
   }
 }

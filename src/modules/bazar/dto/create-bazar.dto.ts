@@ -1,5 +1,4 @@
-
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
     IsNotEmpty,
     IsNumber,
@@ -7,41 +6,49 @@ import {
     IsEnum,
     IsDateString,
     IsOptional,
-    Min
+    Min,
+    MinLength,
+    MaxLength,
+    ValidateIf,
 } from 'class-validator';
 import { ExpenseUnit } from '../../../generated/prisma/enums.js';
-
-
+import { BazarCategory } from '../bazar.enums.js';
 
 export class CreateBazarDto {
-    @ApiProperty({ example: 'Grocery for Friday' })
+    @ApiProperty({ example: 'Beef', minLength: 3, maxLength: 50 })
     @IsString()
     @IsNotEmpty()
+    @MinLength(3)
+    @MaxLength(50)
     title: string;
 
-    @ApiProperty({ example: 1250.50 })
+    @ApiProperty({ example: 1250.5 })
     @IsNumber()
     @IsNotEmpty()
-    @Min(0)
+    @Min(0.01)
     amount: number;
 
-    @ApiProperty({ example: '2026-03-07' })
+    @ApiProperty({ example: '2026-05-09T00:00:00.000Z' })
     @IsDateString()
-    @IsOptional()
-    expenseDate?: string;
+    @IsNotEmpty()
+    expenseDate: string;
 
-    @ApiProperty({ example: 2.5, description: 'The amount of the item purchased' })
-    @IsNumber()
+    @ApiPropertyOptional({ example: 2.5, description: 'Quantity purchased' })
     @IsOptional()
-    @Min(0)
+    @IsNumber()
+    @Min(0.01)
     quantity?: number;
 
-    @ApiProperty({
+    @ApiPropertyOptional({
         enum: ExpenseUnit,
         example: ExpenseUnit.KG,
-        description: 'The unit of measurement'
+        description: 'Required if quantity is present',
     })
+    @ValidateIf((o) => o.quantity !== undefined && o.quantity !== null)
     @IsEnum(ExpenseUnit)
-    @IsOptional()
     unit?: ExpenseUnit;
+
+    @ApiProperty({ enum: BazarCategory, example: BazarCategory.MEAT })
+    @IsEnum(BazarCategory)
+    category: BazarCategory;
 }

@@ -8,86 +8,108 @@ import {
   Delete,
   UseGuards,
   Request,
+  Res,
   BadRequestException,
-  Query
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiBearerAuth,
   ApiResponse,
-  ApiParam
+  ApiParam,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { BazarService } from './bazar.service.js';
 import { CreateBazarDto } from './dto/create-bazar.dto.js';
+import { UpdateBazarDto } from './dto/update-bazar.dto.js';
+import {
+  QueryBazarDto,
+  MonthlySummaryQueryDto,
+} from './dto/query-bazar.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { QueryBazarDto } from './dto/query-bazar.dto.js';
 
 @ApiTags('Bazar & Expenses')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('bazar')
 export class BazarController {
-  constructor(private readonly bazarService: BazarService) { }
+  constructor(private readonly bazarService: BazarService) {}
 
-  @Post('add')
-  @ApiOperation({
-    summary: 'Create a new Bazar entry',
-    description: 'Logs a meal-related expense. The houseId and creatorId are extracted from the token.'
-  })
-  @ApiResponse({ status: 201, description: 'Bazar entry created successfully.' })
-  @ApiResponse({ status: 400, description: 'Invalid input data.' })
-  async create(@Body() createBazarDto: CreateBazarDto, @Request() req) {
-    // Extract houseId from the user's managed house or their assigned house
-    const houseId = req.user?.managedHouse?.id || req.user?.membership?.houseId;
-    const creatorId = req.user.id;
-
+  private getHouseId(user: any): string {
+    const houseId = user?.managedHouse?.id || user?.membership?.houseId || user?.houseId;
     if (!houseId) {
       throw new BadRequestException('User is not associated with any house.');
     }
+    return houseId;
+  }
 
-    return this.bazarService.create(createBazarDto, houseId, creatorId);
+  @Post('add')
+  @ApiOperation({ summary: 'Create a new Bazar entry' })
+  @ApiResponse({ status: 201, description: 'Bazar entry created.' })
+  async create(@Body() dto: CreateBazarDto, @Request() req) {
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.create(dto, houseId, req.user.id);
   }
 
   @Get('all')
-  @ApiOperation({ summary: 'Get all bazar entries for the house' })
+  @ApiOperation({ summary: 'List bazar entries for the house' })
   async findAll(@Request() req, @Query() query: QueryBazarDto) {
-    const houseId = req.user?.managedHouse?.id || req.user?.houseId;
+    const houseId = this.getHouseId(req.user);
     return this.bazarService.findAll(houseId, query);
   }
 
   @Get('all/for-me')
-  @ApiOperation({ summary: 'Get all bazar entries for me' })
+  @ApiOperation({ summary: 'List bazar entries paid by the current user' })
   async findAllForMe(@Request() req, @Query() query: QueryBazarDto) {
-    const userId = req.user?.id;
-    return this.bazarService.findAllForMe(userId, query);
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.findAllForMe(req.user.id, houseId, query);
   }
 
-  // @Get(':id')
-  // @ApiOperation({ summary: 'Get a specific bazar entry by ID' })
-  // @ApiParam({ name: 'id', description: 'The unique ID of the expense' })
-  // async findOne(@Param('id') id: string, @Request() req) {
-  //   const houseId = req.user?.managedHouse?.id || req.user?.houseId;
-  //   return this.bazarService.findOne(id, houseId);
-  // }
+  @Get('monthly-summary')
+  @ApiOperation({ summary: 'Monthly bazar aggregates for stats cards' })
+  async monthlySummary(
+    @Request() req,
+    @Query() query: MonthlySummaryQueryDto,
+  ) {
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.monthlySummary(houseId, req.user.id, query);
+  }
 
-  // @Patch(':id')
-  // @ApiOperation({ summary: 'Update an existing bazar entry' })
-  // async update(
-  //   @Param('id') id: string,
-  //   @Body() updateBazarDto: UpdateBazarDto,
-  //   @Request() req
-  // ) {
-  //   const houseId = req.user?.managedHouse?.id || req.user?.houseId;
-  //   const updaterId = req.user.id;
-  //   return this.bazarService.update(id, updateBazarDto, houseId, updaterId);
-  // }
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a bazar entry (payer or manager only)' })
+  @ApiParam({ name: 'id' })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBazarDto,
+    @Request() req,
+  ) {
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.update(id, dto, req.user.id, houseId);
+  }
 
-  // @Delete(':id')
-  // @ApiOperation({ summary: 'Delete a bazar entry' })
-  // @ApiResponse({ status: 200, description: 'Entry removed.' })
-  // async remove(@Param('id') id: string, @Request() req) {
-  //   const houseId = req.user?.managedHouse?.id || req.user?.houseId;
-  //   return this.bazarService.remove(id, houseId);
-  // }
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a bazar entry (payer or manager only)' })
+  @ApiParam({ name: 'id' })
+  async remove(@Param('id') id: string, @Request() req) {
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.remove(id, req.user.id, houseId);
+  }
+
+  @Get('export')
+  @ApiOperation({ summary: 'CSV export of bazar entries' })
+  async exportCsv(
+    @Request() req,
+    @Query() query: QueryBazarDto & { scope?: 'house' | 'me' },
+    @Res() res: Response,
+  ) {
+    const houseId = this.getHouseId(req.user);
+    const csv = await this.bazarService.exportCsv(houseId, req.user.id, query);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="bazar-${query.month}.csv"`,
+    );
+    res.send(csv);
+  }
 }

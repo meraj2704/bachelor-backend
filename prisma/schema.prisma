@@ -38,6 +38,19 @@ enum ExpenseUnit {
   DOZEN
 }
 
+enum BazarCategory {
+  MEAT
+  FISH
+  VEGETABLES
+  FRUITS
+  DAIRY
+  GROCERY
+  SPICES
+  BEVERAGES
+  SNACKS
+  OTHER
+}
+
 // --- MODELS ---
 
 model User {
@@ -60,6 +73,7 @@ model User {
   refreshTokens   RefreshToken[]
   auditLogs       AuditLog[]
   transactions    Transaction[]
+  mealSheetLocks  MealSheetLock[] @relation("MealSheetLocker")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -88,8 +102,23 @@ model House {
   createdById    String?
   updatedById    String?
   userFixedCosts UserFixedCost[]
+  mealSheetLocks MealSheetLock[]
 
   @@map("houses")
+}
+
+model MealSheetLock {
+  id         String   @id @default(cuid())
+  houseId    String
+  month      String   // "YYYY-MM"
+  lockedById String
+  lockedAt   DateTime @default(now())
+
+  house    House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  lockedBy User  @relation("MealSheetLocker", fields: [lockedById], references: [id])
+
+  @@unique([houseId, month])
+  @@map("meal_sheet_locks")
 }
 
 model HouseMember {
@@ -149,6 +178,7 @@ model Expense {
   expenseDate DateTime        @default(now())
   quantity    Decimal?        @db.Decimal(10, 2)
   unit        ExpenseUnit?    @default(KG)
+  bazarCategory BazarCategory?
 
   isBazar     Boolean @default(true)
   isFixedCost Boolean @default(false)
