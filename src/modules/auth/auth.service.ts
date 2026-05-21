@@ -131,6 +131,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support.',
+      );
+    }
+
     return this.getAuthResponse(user, user?.membership?.houseId);
   }
 }

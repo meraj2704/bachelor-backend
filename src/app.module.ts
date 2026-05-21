@@ -15,6 +15,7 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
 import { HouseModule } from './modules/house/house.module.js';
 import { MenuModule } from './modules/menu/menu.module.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MenuModule } from './modules/menu/menu.module.js';
     DashboardModule,
     HouseModule,
     MenuModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, UserService, PrismaService],

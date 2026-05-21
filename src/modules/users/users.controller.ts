@@ -1,12 +1,20 @@
 import { Controller, Get, Body, Patch, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiOkResponse, ApiBody } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { GetUser } from '../../common/decorators/get-user.decorator.js';
 import { UserService } from './users.service.js';
 
 class ChangePasswordDto {
+  // Decorators are required — the global ValidationPipe runs with
+  // whitelist + forbidNonWhitelisted, so undecorated fields are rejected.
+  @IsString()
+  @IsNotEmpty()
   currentPassword: string;
+
+  @IsString()
+  @MinLength(6)
   newPassword: string;
 }
 

@@ -83,6 +83,7 @@ model User {
   profilePicture String?
   currentBalance Decimal      @default(0) @db.Decimal(12, 2)
   isActive       Boolean      @default(true)
+  isSuperAdmin   Boolean      @default(false)
   tokenVersion   Int          @default(0)
   managedHouse   House?       @relation("HouseManager")
   membership     HouseMember?
