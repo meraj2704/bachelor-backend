@@ -19,9 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         });
     }
 
-    async validate(payload: { sub: string; email: string, houseId: string }) {
-        console.log('Payload decoded successfully:', payload);
-
+    async validate(payload: { sub: string; email: string; houseId: string; tokenVersion?: number }) {
         const user = await this.prisma.user.findUnique({
             where: { id: payload.sub },
             include: {
@@ -32,6 +30,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
         if (!user) {
             throw new UnauthorizedException();
+        }
+
+        if (
+            payload.tokenVersion !== undefined &&
+            user.tokenVersion !== payload.tokenVersion
+        ) {
+            throw new UnauthorizedException('Token has been invalidated. Please log in again.');
         }
 
         const { passwordHash, ...userWithoutPassword } = user;

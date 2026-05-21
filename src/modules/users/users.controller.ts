@@ -1,13 +1,18 @@
-import { Controller, Get, Body, Patch, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags, ApiOkResponse } from '@nestjs/swagger';
+import { Controller, Get, Body, Patch, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags, ApiOkResponse, ApiBody } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { GetUser } from '../../common/decorators/get-user.decorator.js';
 import { UserService } from './users.service.js';
 
+class ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
 @ApiTags('Users')
-@ApiBearerAuth('JWT-auth') // Swagger-এ লক আইকন দেখাবে
-@UseGuards(JwtAuthGuard)     // এই কন্ট্রোলার প্রোটেক্টেড
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) { }
@@ -23,8 +28,27 @@ export class UserController {
   @ApiOperation({ summary: 'Update profile information' })
   async updateMe(
     @GetUser('id') userId: string,
-    @Body() data: any // এখানে আপনার UpdateUserDto ব্যবহার করা উচিত
+    @Body() data: any
   ) {
     return this.userService.updateUser(userId, data);
+  }
+
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change account password' })
+  @ApiBody({ schema: { properties: { currentPassword: { type: 'string' }, newPassword: { type: 'string' } } } })
+  @ApiOkResponse({ description: 'Password updated successfully.' })
+  async changePassword(
+    @GetUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.userService.changePassword(userId, dto.currentPassword, dto.newPassword);
+  }
+
+  @Get('me/stats')
+  @ApiOperation({ summary: 'Get personal stats: total meals and total deposited' })
+  @ApiOkResponse({ description: 'Returns totalMeals and totalDeposited for the current user.' })
+  async getMyStats(@GetUser('id') userId: string) {
+    return this.userService.getMyStats(userId);
   }
 }

@@ -80,3 +80,10 @@ export class MonthlySummaryQueryDto {
     @IsEnum(['house', 'me'] as any)
     scope?: 'house' | 'me' = 'house';
 }
+
+export class MonthlySettlementQueryDto {
+    @ApiPropertyOptional({ example: '2026-05', description: 'Month in YYYY-MM format' })
+    @IsString()
+    @Matches(/^\d{4}-\d{2}$/, { message: 'month must be in YYYY-MM format' })
+    month: string;
+}

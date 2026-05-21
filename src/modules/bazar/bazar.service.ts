@@ -11,6 +11,7 @@ import {
   BazarSortBy,
   BazarSortOrder,
   MonthlySummaryQueryDto,
+  MonthlySettlementQueryDto,
 } from './dto/query-bazar.dto.js';
 import { UpdateBazarDto } from './dto/update-bazar.dto.js';
 import { BazarCategory } from './bazar.enums.js';
@@ -309,5 +310,145 @@ export class BazarService {
     );
 
     return [header, ...lines].join('\n');
+  }
+
+  // ---------- monthly settlement ----------
+
+  private getDatesInRange(start: Date, end: Date): Date[] {
+    const dates: Date[] = [];
+    const current = new Date(start);
+    while (current < end) {
+      dates.push(new Date(current));
+      current.setUTCDate(current.getUTCDate() + 1);
+    }
+    return dates;
+  }
+
+  private toDateKey(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+
+  async monthlySettlement(houseId: string, query: MonthlySettlementQueryDto) {
+    const { gte: startDate, lt: endDate } = this.getMonthDateRange(query.month);
+
+    const [members, allExpenses, fixedCosts, mealLogs] = await Promise.all([
+      this.prisma.houseMember.findMany({
+        where: { houseId, isActive: true },
+        select: {
+          userId: true,
+          joinDate: true,
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.expense.findMany({
+        where: {
+          houseId,
+          isBazar: true,
+          expenseDate: { gte: startDate, lt: endDate },
+        },
+        select: { id: true, payerId: true, amount: true },
+      }),
+      this.prisma.userFixedCost.findMany({
+        where: { houseId },
+        select: {
+          memberId: true,
+          totalFixedCost: true,
+        },
+      }),
+      this.prisma.mealLog.findMany({
+        where: {
+          houseId,
+          date: { gte: startDate, lt: endDate },
+        },
+        select: { userId: true, date: true, totalDay: true },
+      }),
+    ]);
+
+    const totalBazarExpense = allExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    const fixedCostMap = new Map(fixedCosts.map((f) => [f.memberId, Number(f.totalFixedCost)]));
+    const contributionMap = new Map<string, number>();
+    allExpenses.forEach((e) => {
+      const current = contributionMap.get(e.payerId) || 0;
+      contributionMap.set(e.payerId, current + Number(e.amount));
+    });
+
+    // Calculate meals including virtual defaults (lunch=1, dinner=1 for missing dates)
+    const allDates = this.getDatesInRange(startDate, endDate);
+    const memberMealsMap = new Map<string, number>();
+    let totalMeals = 0;
+
+    members.forEach((member) => {
+      let memberTotalMeals = 0;
+      const memberJoinDate = new Date(Date.UTC(
+        member.joinDate.getUTCFullYear(),
+        member.joinDate.getUTCMonth(),
+        member.joinDate.getUTCDate(),
+      ));
+
+      allDates.forEach((date) => {
+        if (date < memberJoinDate) return;
+
+        const actualLog = mealLogs.find(
+          (m) => m.userId === member.userId && this.toDateKey(new Date(m.date)) === this.toDateKey(date),
+        );
+
+        if (actualLog) {
+          memberTotalMeals += Number(actualLog.totalDay);
+        } else {
+          memberTotalMeals += 2; // Virtual default: lunch=1, dinner=1
+        }
+      });
+
+      memberMealsMap.set(member.userId, memberTotalMeals);
+      totalMeals += memberTotalMeals;
+    });
+
+    const mealRate = totalMeals > 0 ? totalBazarExpense / totalMeals : 0;
+
+    const memberDetails = members.map((member) => {
+      const fixedCost = fixedCostMap.get(member.userId) || 0;
+      const contribution = contributionMap.get(member.userId) || 0;
+      const memberMeals = memberMealsMap.get(member.userId) || 0;
+      const bazarAmount = memberMeals * mealRate;
+      const totalOwed = bazarAmount + fixedCost;
+      const balance = totalOwed - contribution;
+
+      let status: 'OWES' | 'GETS_REFUND' | 'SETTLED';
+      if (balance > 0.01) status = 'OWES';
+      else if (balance < -0.01) status = 'GETS_REFUND';
+      else status = 'SETTLED';
+
+      return {
+        userId: member.userId,
+        user: member.user,
+        joinDate: member.joinDate,
+        totalMeals: memberMeals,
+        mealRate: Math.round(mealRate * 100) / 100,
+        bazarAmount: Math.round(bazarAmount * 100) / 100,
+        fixedCost: Math.round(fixedCost * 100) / 100,
+        totalOwed: Math.round(totalOwed * 100) / 100,
+        yourContribution: Math.round(contribution * 100) / 100,
+        balance: Math.round(balance * 100) / 100,
+        status,
+      };
+    });
+
+    const totalFixedCosts = members.reduce((sum, m) => sum + (fixedCostMap.get(m.userId) || 0), 0);
+
+    return {
+      month: query.month,
+      mealRate: Math.round(mealRate * 100) / 100,
+      totalMeals,
+      members: memberDetails,
+      summary: {
+        totalBazarExpense: Math.round(totalBazarExpense * 100) / 100,
+        totalFixedCost: Math.round(totalFixedCosts * 100) / 100,
+        totalOwed: Math.round((totalBazarExpense + totalFixedCosts) * 100) / 100,
+        totalCollected: Math.round(
+          allExpenses.reduce((sum, e) => sum + Number(e.amount), 0) * 100,
+        ) / 100,
+        activeMembers: members.length,
+      },
+    };
   }
 }

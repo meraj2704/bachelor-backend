@@ -9,9 +9,8 @@ export class AuthService {
   constructor(private prisma: PrismaService, private jwtService: JwtService) { }
 
   // ১. কমন টোকেন জেনারেটর
-  private async generateTokens(userId: string, email: string, houseId: string) {
-    const payload = { sub: userId, email, houseId };
-    console.log('payload', payload)
+  private async generateTokens(userId: string, email: string, houseId: string, tokenVersion = 0) {
+    const payload = { sub: userId, email, houseId, tokenVersion };
     return {
       access_token: await this.jwtService.signAsync(payload),
     };
@@ -25,9 +24,7 @@ export class AuthService {
 
   // ৩. ইউজার এবং টোকেন একসাথে রিটার্ন করার কমন ফরম্যাট
   private async getAuthResponse(user: any, houseId: any) {
-    // console.log(object)
-    console.log('user', user)
-    const tokens = await this.generateTokens(user.id, user.email, houseId);
+    const tokens = await this.generateTokens(user.id, user.email, houseId, user.tokenVersion ?? 0);
     return {
       user: this.sanitizeUser(user),
       tokens,
@@ -38,8 +35,13 @@ export class AuthService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async findHouseWithId(id: string) {
-    return this.prisma.house.findUnique({ where: { id } });
+  async findHouseWithId(inviteCode: string) {
+    // Match the invite code case-insensitively so copy/paste casing never matters.
+    return this.prisma.house.findFirst({
+      where: {
+        inviteCode: { equals: inviteCode.trim(), mode: 'insensitive' },
+      } as any,
+    });
   }
 
   async registerManager(dto: RegisterManagerDto) {
@@ -80,6 +82,13 @@ export class AuthService {
   async registerMember(dto: RegisterMemberDto) {
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    const house = await this.prisma.house.findFirst({
+      where: {
+        inviteCode: { equals: dto.inviteCode.trim(), mode: 'insensitive' },
+      } as any,
+    });
+    if (!house) throw new UnauthorizedException('Invalid invite code');
+
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -92,17 +101,23 @@ export class AuthService {
 
       const member = await tx.houseMember.create({
         data: {
-          houseId: dto.inviteCode,
+          houseId: house.id,
           userId: user.id,
           role: 'MEMBER',
         },
-        include: {
-          house: true
-        }
+        include: { house: true }
       });
 
       return this.getAuthResponse(user, member.house?.id);
     });
+  }
+
+  async logoutAll(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    return { message: 'Signed out from all devices.' };
   }
 
   async login(email: string, password: string) {

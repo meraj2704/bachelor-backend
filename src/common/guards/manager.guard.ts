@@ -5,6 +5,10 @@ import {
   Injectable,
 } from '@nestjs/common';
 
+/**
+ * Allows the request only when the authenticated user is the manager of a house.
+ * Stores the managed houseId on `req.houseId` for the controller to use.
+ */
 @Injectable()
 export class ManagerGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {

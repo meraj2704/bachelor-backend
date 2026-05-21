@@ -12,7 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { ManagerGuard } from './guards/manager.guard.js';
+import { ManagerGuard } from '../../common/guards/manager.guard.js';
 import { MealSheetsService } from './meal-sheets.service.js';
 import {
   BulkUpdateSheetDto,

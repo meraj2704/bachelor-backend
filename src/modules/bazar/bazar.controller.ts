@@ -26,6 +26,7 @@ import { UpdateBazarDto } from './dto/update-bazar.dto.js';
 import {
   QueryBazarDto,
   MonthlySummaryQueryDto,
+  MonthlySettlementQueryDto,
 } from './dto/query-bazar.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
@@ -74,6 +75,16 @@ export class BazarController {
   ) {
     const houseId = this.getHouseId(req.user);
     return this.bazarService.monthlySummary(houseId, req.user.id, query);
+  }
+
+  @Get('monthly-settlement')
+  @ApiOperation({ summary: 'Monthly settlement: shows each member\'s balance (owes/gets refund)' })
+  async monthlySettlement(
+    @Request() req,
+    @Query() query: MonthlySettlementQueryDto,
+  ) {
+    const houseId = this.getHouseId(req.user);
+    return this.bazarService.monthlySettlement(houseId, query);
   }
 
   @Patch(':id')

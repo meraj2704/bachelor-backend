@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 
@@ -40,32 +40,44 @@ export class HouseMembersService {
   }
 
   async toggleMemberStatus(memberId: string, houseId: string) {
-    // 1. Fetch current status
     const member = await this.prisma.houseMember.findFirst({
       where: { id: memberId, houseId },
-      select: { isActive: true, role: true }
+      select: { isActive: true, role: true },
     });
 
     if (!member) throw new NotFoundException('Member not found');
 
-    // 2. Prevent Manager from deactivating themselves
     if (member.role === 'MANAGER' && member.isActive) {
       throw new ForbiddenException('Manager status cannot be toggled.');
     }
 
-    // 3. Toggle logic
     const newStatus = !member.isActive;
 
     return await this.prisma.houseMember.update({
       where: { id: memberId },
       data: {
         isActive: newStatus,
-        // If turning active, clear leftDate. If deactivating, set leftDate.
         leftDate: newStatus ? null : new Date(),
-      }
+      },
     });
   }
 
+  async removeMember(memberId: string, houseId: string) {
+    const member = await this.prisma.houseMember.findFirst({
+      where: { id: memberId, houseId },
+      select: { role: true, userId: true, user: { select: { firstName: true, lastName: true } } },
+    });
 
+    if (!member) throw new NotFoundException('Member not found in this house.');
+    if (member.role === 'MANAGER') {
+      throw new BadRequestException('Cannot remove the manager. Transfer manager role first.');
+    }
 
+    await this.prisma.houseMember.delete({ where: { id: memberId } });
+
+    return {
+      message: `${member.user.firstName} ${member.user.lastName} has been permanently removed from the house.`,
+      userId: member.userId,
+    };
+  }
 }

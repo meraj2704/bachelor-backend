@@ -11,6 +11,10 @@ import { FixedCostsModule } from './modules/fixed-costs/fixed-costs.module.js';
 import { BazarModule } from './modules/bazar/bazar.module.js';
 import { MealLogsModule } from './modules/meal-logs/meal-logs.module.js';
 import { MealSheetsModule } from './modules/meal-sheets/meal-sheets.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
+import { DashboardModule } from './modules/dashboard/dashboard.module.js';
+import { HouseModule } from './modules/house/house.module.js';
+import { MenuModule } from './modules/menu/menu.module.js';
 
 @Module({
   imports: [
@@ -22,6 +26,10 @@ import { MealSheetsModule } from './modules/meal-sheets/meal-sheets.module.js';
     BazarModule,
     MealLogsModule,
     MealSheetsModule,
+    PaymentsModule,
+    DashboardModule,
+    HouseModule,
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [AppService, UserService, PrismaService],

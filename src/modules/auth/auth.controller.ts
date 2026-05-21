@@ -5,7 +5,8 @@ import {
   ConflictException,
   BadRequestException,
   HttpCode,
-  HttpStatus
+  HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,11 +15,14 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
-  ApiOkResponse
+  ApiOkResponse,
+  ApiBearerAuth
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { RegisterManagerDto, RegisterMemberDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { GetUser } from '../../common/decorators/get-user.decorator.js';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -63,5 +67,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials.' })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Sign out from all devices by invalidating all tokens' })
+  @ApiOkResponse({ description: 'Signed out from all devices.' })
+  async logoutAll(@GetUser('id') userId: string) {
+    return this.authService.logoutAll(userId);
   }
 }
