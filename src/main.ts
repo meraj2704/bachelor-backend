@@ -6,8 +6,13 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WinstonModule } from 'nest-winston';
 import { loggerConfig } from './core/logger/winston.config.js';
-import helmet from 'helmet';
+import * as helmetImport from 'helmet';
 import compression from 'compression';
+
+// `helmet` resolves to different shapes depending on how the package is
+// installed (CJS vs ESM build) — normalize to the callable export so the
+// build is stable across environments.
+const helmet: any = (helmetImport as any).default ?? helmetImport;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
